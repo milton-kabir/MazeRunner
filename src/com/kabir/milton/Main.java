@@ -10,12 +10,14 @@ import java.util.function.Consumer;
 import static com.kabir.milton.Cell.Type.PASSAGE;
 import static com.kabir.milton.Cell.Type.WALL;
 import static java.lang.Integer.parseInt;
+import static java.util.Comparator.comparingInt;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.IntStream.range;
 
 class Maze {
     private final int height;
     private final int width;
+    private boolean isSolved = false;
     private final Cell[][] grid;
 
     public Maze(int height, int width) {
@@ -31,9 +33,7 @@ class Maze {
         this.grid = grid;
     }
 
-
     public Maze(int size) {
-
         this(size, size);
     }
 
@@ -147,7 +147,7 @@ class Maze {
                 if (cell.isWall()) {
                     sb.append("██");
                 } else if (showEscape && cell.isEscape()) {
-                    sb.append("▓▓");
+                    sb.append("//");
                 } else {
                     sb.append("  ");
                 }
@@ -160,6 +160,181 @@ class Maze {
     @Override
     public String toString() {
         return toString(false);
+    }
+
+    public String findEscape() {
+        if (!isSolved) {
+            new Fugitive(grid, getEntrance(), getExit())
+                    .findEscape()
+                    .forEach(putCell());
+            isSolved = true;
+        }
+        return toString(true);
+    }
+
+    private Cell getEntrance() {
+        return grid[0][1];
+    }
+
+    private Cell getExit() {
+        return grid[height - 1][getExitColumn()];
+    }
+
+
+}
+
+class Fugitive {
+    private static final int[][] DELTAS = {{-1, 0}, {0, -1}, {0, 1}, {1, 0}};
+    private final int height;
+    private final int width;
+    private final Node[][] grid;
+    private final Node start;
+    private final Node end;
+    private final PriorityQueue<Node> open = new PriorityQueue<>(comparingInt(Node::getFinalCost));
+    private final Set<Node> closed = new HashSet<>();
+
+    public Fugitive(Cell[][] grid, Cell start, Cell end) {
+        this.height = grid.length;
+        this.width = grid[0].length;
+        this.grid = new Node[height][width];
+        this.start = new Node(start.getRow(), start.getColumn(), false);
+        this.end = new Node(end.getRow(), end.getColumn(), false);
+        createNodes(grid);
+    }
+
+    private void createNodes(Cell[][] grid) {
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+                var node = new Node(i, j, grid[i][j].isWall());
+                node.calcHeuristicTo(end);
+                this.grid[i][j] = node;
+            }
+        }
+    }
+
+    public List<Cell> findEscape() {
+        open.add(start);
+        while (!open.isEmpty()) {
+            var cur = open.poll();
+            if (isEnd(cur))
+                return reconstructPath(cur);
+            closed.add(cur);
+            updateNeighbors(cur);
+        }
+        return new ArrayList<>();
+    }
+
+    private boolean isEnd(Node currentNode) {
+        return currentNode.equals(end);
+    }
+
+    private List<Cell> reconstructPath(Node cur) {
+        var path = new LinkedList<Cell>();
+        path.add(toCell(cur));
+        while (cur.getParent() != cur) {
+            var parent = cur.getParent();
+            path.addFirst(toCell(parent));
+            cur = parent;
+        }
+        return path;
+    }
+
+    private Cell toCell(Node node) {
+        return new Cell(node.getRow(), node.getColumn(), Cell.Type.ESCAPE);
+    }
+
+    private void updateNeighbors(Node cur) {
+        for (var delta : DELTAS) {
+            var row = cur.getRow() + delta[0];
+            var column = cur.getColumn() + delta[1];
+            if (inBounds(row, column)) {
+                var node = grid[row][column];
+                if (!node.isWall() && !closed.contains(node)) {
+                    if (open.contains(node)) {
+                        if (node.hasBetterPath(cur)) {
+                            open.remove(node);
+                        } else {
+                            continue;
+                        }
+                    }
+                    node.updatePath(cur);
+                    open.add(node);
+                }
+            }
+        }
+    }
+
+    private boolean inBounds(int row, int column) {
+        return row >= 0 && row < height
+                && column >= 0 && column < width;
+    }
+}
+
+class Node {
+    private static final int EDGE_COST = 1;
+    private final int row;
+    private final int column;
+    private final boolean isWall;
+    private Node parent;
+    private int g;
+    private int h;
+    private int f;
+
+    Node(int row, int column, boolean isWall) {
+        this.row = row;
+        this.column = column;
+        this.isWall = isWall;
+        parent = this;
+    }
+
+    int getRow() {
+        return row;
+    }
+
+    int getColumn() {
+        return column;
+    }
+
+    boolean isWall() {
+        return isWall;
+    }
+
+    Node getParent() {
+        return parent;
+    }
+
+    int getFinalCost() {
+        return f;
+    }
+
+    void calcHeuristicTo(Node node) {
+        this.h = Math.abs(node.row - this.row)
+                + Math.abs(node.column - this.column);
+    }
+
+    boolean hasBetterPath(Node node) {
+        return node.g + EDGE_COST < this.g;
+    }
+
+    void updatePath(Node node) {
+        this.parent = node;
+        this.g = node.g + EDGE_COST;
+        f = g + h;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        var node = (Node) o;
+        return row == node.row &&
+                column == node.column &&
+                isWall == node.isWall;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(row, column, isWall);
     }
 }
 
@@ -342,6 +517,7 @@ public class Main {
             if (isMazeAvailable) {
                 System.out.println("3. Save the maze");
                 System.out.println("4. Display the maze");
+                System.out.println("5. Find the escape");
             }
             System.out.println("0. Exit");
 
@@ -364,6 +540,9 @@ public class Main {
                     case 4:
                         display();
                         break;
+                    case 5:
+                        findEscape();
+                        break;
                     default:
                         System.out.println("Incorrect option. Please try again");
                         break;
@@ -374,6 +553,10 @@ public class Main {
                 System.out.println("Unknown error");
             }
         }
+    }
+
+    public static void findEscape() {
+        System.out.println(maze.findEscape());
     }
 
     public static void exit() {
