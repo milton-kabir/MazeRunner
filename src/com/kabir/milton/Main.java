@@ -1,6 +1,9 @@
 //package maze;
 package com.kabir.milton;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -22,8 +25,60 @@ class Maze {
         fillGrid();
     }
 
+    private Maze(int height, int width, Cell[][] grid) {
+        this.height = height;
+        this.width = width;
+        this.grid = grid;
+    }
+
+
     public Maze(int size) {
+
         this(size, size);
+    }
+
+    private static Cell.Type intToType(int val) {
+        return val == 1 ? WALL : PASSAGE;
+    }
+
+    public static Maze load(String str) {
+        try {
+            var whole = str.split("\n");
+            var size = whole[0].split(" ");
+            var height = parseInt(size[0]);
+            var width = parseInt(size[1]);
+            var grid = new Cell[height][width];
+            for (int i = 0; i < height; i++) {
+                var row = whole[i + 1].split(" ");
+                for (int j = 0; j < width; j++)
+                    grid[i][j] = new Cell(
+                            i, j, intToType(parseInt(row[j]))
+                    );
+            }
+            return new Maze(height, width, grid);
+        } catch (Exception e) {
+            throw new IllegalArgumentException(
+                    "Cannot load the maze. " +
+                            "It has an invalid format"
+            );
+        }
+    }
+
+    public String export() {
+        var sb = new StringBuilder();
+        sb.append(height).append(' ')
+                .append(width).append('\n');
+        for (var row : grid) {
+            for (var cell : row)
+                sb.append(typeToInt(cell))
+                        .append(' ');
+            sb.append('\n');
+        }
+        return sb.toString();
+    }
+
+    private int typeToInt(Cell cell) {
+        return cell.isWall() ? 1 : 0;
     }
 
     private void fillGrid() {
@@ -274,7 +329,57 @@ class DisjointSet {
 }
 
 public class Main {
+    public static Scanner scanner;
     public static Maze maze;
+    public static boolean isMazeAvailable = false;
+
+    public static void start() {
+        scanner = new Scanner(System.in);
+        while (true) {
+            System.out.println("=== Menu ===");
+            System.out.println("1. Generate a new maze");
+            System.out.println("2. Load a maze");
+            if (isMazeAvailable) {
+                System.out.println("3. Save the maze");
+                System.out.println("4. Display the maze");
+            }
+            System.out.println("0. Exit");
+
+            try {
+                var choice = scanner.nextInt();
+                scanner.nextLine();
+                switch (choice) {
+                    case 0:
+                        exit();
+                        return;
+                    case 1:
+                        generate();
+                        break;
+                    case 2:
+                        load();
+                        break;
+                    case 3:
+                        save();
+                        break;
+                    case 4:
+                        display();
+                        break;
+                    default:
+                        System.out.println("Incorrect option. Please try again");
+                        break;
+                }
+            } catch (InputMismatchException e) {
+                System.out.println("Incorrect option. Please try again");
+            } catch (Exception e) {
+                System.out.println("Unknown error");
+            }
+        }
+    }
+
+    public static void exit() {
+        scanner.close();
+        System.out.println("Bye!");
+    }
 
     public static void generate() {
         System.out.println("Enter the size of the new maze (in the [size] or [height width] format)");
@@ -291,7 +396,35 @@ public class Main {
         } else {
             System.out.println("Cannot generate a maze. Invalid size");
         }
+        isMazeAvailable = true;
         display();
+    }
+
+    public static void load() {
+        System.out.println("Enter the filename");
+        var filename = scanner.nextLine();
+        try {
+            var content = Files.readString(Paths.get(filename));
+            maze = Maze.load(content);
+            isMazeAvailable = true;
+            System.out.println("The maze is loaded");
+        } catch (IOException e) {
+            System.out.println("The file " + filename + " does not exist");
+        } catch (IllegalArgumentException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    public static void save() {
+        System.out.println("Enter the filename");
+        var filename = scanner.nextLine();
+        try {
+            var export = maze.export();
+            Files.write(Paths.get(filename), export.getBytes());
+            System.out.println("The maze is saved");
+        } catch (IOException e) {
+            System.out.println("Cannot write to file " + filename);
+        }
     }
 
     public static void display() {
@@ -299,7 +432,6 @@ public class Main {
     }
 
     public static void main(String[] args) {
-
-        generate();
+        start();
     }
 }
